@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { Page } from 'playwright';
-import { likeCommentById, replaceCommentById, replyToCommentById, unlikeCommentById } from './behaviors/interact-with-comment';
+import { likeCommentById, replyToCommentById, unlikeCommentById } from './behaviors/interact-with-comment';
 import { bookmarkPost, likePost, postThread, postTweet, quoteTweet, replyToPost, retweetPost, unbookmarkPost, unlikePost, unretweetPost } from './behaviors/interact-with-post';
 import { getAuthenticatedPage, login } from './behaviors/login';
 import { SearchPresets, getTopComments, scrapeComments, scrapePosts, scrapeProfile, scrapeTimeline, scrapeTrendingTopics, searchTwitter } from './scrapers';
@@ -444,23 +444,6 @@ program
       console.log(`✅ Successfully replied to comment ${commentUrl} with: "${options.text}"`);
     } catch (error) {
       console.error('❌ Reply to comment by ID failed:', error);
-      process.exit(1);
-    }
-    process.exit(0);
-  });
-
-// Replace comment by ID command
-program
-  .command('replace-comment-by-id <commentUrl>')
-  .description('Replace/edit a comment by its direct URL (Note: Twitter/X may not support comment editing)')
-  .requiredOption('-t, --text <text>', 'New comment text')
-  .action(async (commentUrl: string, options: { text: string }) => {
-    try {
-      const page = await ensureAuthenticated();
-      await replaceCommentById(page, commentUrl, options.text);
-      console.log(`✅ Successfully replaced comment: ${commentUrl} with: "${options.text}"`);
-    } catch (error) {
-      console.error('❌ Replace comment by ID failed:', error);
       process.exit(1);
     }
     process.exit(0);

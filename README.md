@@ -1,387 +1,104 @@
-# X/Twitter MCP Server
+# Twitter MCP
 
-A Model Context Protocol (MCP) server that provides unofficial X/Twitter API access through browser automation using Playwright. This server enables AI agents and applications to interact with X/Twitter programmatically for content creation, scraping, and social media automation.
+Fork of [Barresider/x-mcp](https://github.com/Barresider/x-mcp)，通过 Playwright 浏览器自动化操作 Twitter/X 的 MCP 服务。
 
-## 🚀 Features
+## 改动
 
-### Content Creation & Interaction
-- **Tweet & Thread Posting**: Post single tweets or multi-tweet threads with media support
-- **Post Interactions**: Like, unlike, retweet, unretweet, bookmark, quote tweet, and reply to posts
-- **Comment Management**: Like, unlike, reply to, and edit comments
-- **Media Support**: Upload and attach images, videos, and GIFs to tweets
+基于上游做了以下修改：
 
-### Content Scraping & Analysis
-- **Timeline Scraping**: Extract posts from "For You" and "Following" timelines
-- **Profile Scraping**: Get comprehensive user profile data and recent posts
-- **Search Functionality**: Advanced search with filters for viral content, specific users, and date ranges
-- **Comment Scraping**: Extract comments and replies from specific posts
-- **Trending Topics**: Retrieve current trending topics and hashtags
+- **HTTP 传输**: 新增 StreamableHTTP 端点 `/mcp`，支持 `http`/`sse`/`stdio` 三种模式
+- **Cookie 认证**: 新增 `extract-cookies` 命令，从真实 Chrome 提取 Cookie（绕过 Twitter 反自动化检测）
+- **Bug 修复**: likePost 选择器、unbookmarkPost 选择器、compose 对话框选择器、screenshot 缺少 await
+- **性能优化**: 移除全局 slowMo 1000ms、媒体上传智能等待
+- **移除功能**: `replace_comment`（Twitter 不支持编辑评论）
 
-### MCP Integration
-- **Dual Transport Support**: Works with both stdio and HTTP/SSE transports
-- **Tool-based Interface**: 20+ tools available for AI agents to interact with X/Twitter
-- **Structured Responses**: JSON-formatted responses with comprehensive metadata
-- **Error Handling**: Robust error handling with descriptive error messages
+## 安装
 
-## 📋 Prerequisites
-
-- Node.js 18+ 
-- Valid X/Twitter account credentials
-- Docker (optional, for containerized deployment)
-
-## Quick Start
-
-1. Add this configuration to your Claude Desktop config file:
-
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`  
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "x-mcp": {
-      "command": "npx",
-      "args": ["-y", "@barresider/x-mcp"],
-      "env": {
-        "TWITTER_USERNAME": "your_twitter_username",
-        "TWITTER_PASSWORD": "your_twitter_password"
-      }
-    }
-  }
-}
-```
-
-With proxy (optional):
-```json
-{
-  "mcpServers": {
-    "x-mcp": {
-      "command": "npx",
-      "args": ["-y", "@barresider/x-mcp"],
-      "env": {
-        "TWITTER_USERNAME": "your_twitter_username",
-        "TWITTER_PASSWORD": "your_twitter_password",
-        "PROXY_URL": "http://proxy-server:port"
-      }
-    }
-  }
-}
-```
-
-2. Restart Claude Desktop
-
-That's it! Claude can now interact with X/Twitter through 25+ powerful tools including:
-
-- `tweet`: Post a new tweet with optional media
-- `thread`: Post a multi-tweet thread
-- `search_twitter`: Search for tweets with advanced filters
-- `scrape_profile`: Get comprehensive user profile data
-- `scrape_timeline`: Extract posts from timelines
-- `like_post`, `retweet_post`, `bookmark_post`: Interact with posts
-- And many more for comprehensive X/Twitter automation
-
-## Example Usage
-
-Try asking Claude:
-- "Can you post a tweet saying 'Hello from Claude!'"
-- "Can you search for tweets about Claude AI?"
-- "Can you scrape Elon Musk's profile and show me his latest 5 tweets?"
-- "Can you post a thread about the benefits of AI?"
-
-## 🛠️ Installation
-
-### Local Development Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd x-mcp
-```
-
-2. Install dependencies:
 ```bash
 npm install
+npx playwright install chromium
 ```
 
-3. Build the project:
+## 登录
+
+Twitter 会检测 Playwright 自动化登录，所以采用 **从 Chrome 提取 Cookie** 的方式：
+
 ```bash
-npm run build
+npm run extract-cookies
 ```
 
-### Docker Installation
+会弹出一个独立的 Chrome 窗口（临时 profile，不影响你的主 Chrome），在里面手动登录目标 Twitter 账号，登录成功后自动保存 Cookie。
 
-1. Build the Docker image:
+如果你的主 Chrome 已经登录了目标账号，也可以用 Python 直接提取（需要 `pycookiecheat`）：
+
 ```bash
-docker build -t x-mcp .
+pip install pycookiecheat
+python3 -c "
+from pycookiecheat import chrome_cookies
+import json, os
+
+cookies = chrome_cookies('https://x.com')
+# 注意：这种方式只能获取非 httpOnly 的 cookie 值
+# 推荐使用 npm run extract-cookies
+"
 ```
 
-2. Or use Docker Compose:
+Cookie 保存在 `playwright/.auth/twitter.json`（已 gitignore）。
+
+## 运行
+
 ```bash
-docker-compose --profile mcp up --build
-```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-# Required: X/Twitter credentials
-TWITTER_USERNAME=your_username
-TWITTER_PASSWORD=your_password
-
-# Optional: Proxy configuration
-PROXY_URL=http://proxy-server:port          # Full proxy URL (supports http/https)
-# or with authentication
-PROXY_URL=http://username:password@proxy-server:port
-# or separately
-PROXY_URL=http://proxy-server:port
-PROXY_USERNAME=proxy_username               # Optional: separate username
-PROXY_PASSWORD=proxy_password               # Optional: separate password
-
-# Optional: MCP server configuration
-MCP_TRANSPORT=stdio           # Options: stdio, sse, http
-MCP_PORT=3000                # Port for HTTP/SSE transport
-
-# Optional: Directory for authentication state (default: playwright/.auth)
-AUTH_DIR=playwright/.auth
-```
-
-### Authentication Setup
-
-1. (Optional) Create authentication directory or set `AUTH_DIR` environment variable:
-```bash
-export AUTH_DIR=/path/to/auth/dir
-mkdir -p "${AUTH_DIR:-playwright/.auth}"
-```
-
-2. Login to X/Twitter (stores session for reuse):
-```bash
-npm run cli login
-# or
-node dist/cli.js login
-```
-
-## 🔧 Available MCP Tools
-
-The server provides 25+ tools for comprehensive X/Twitter interaction:
-
-### Authentication & Setup
-- `login` - Authenticate with X/Twitter
-
-### Content Creation
-- `tweet` - Post a single tweet with optional media
-- `thread` - Post a multi-tweet thread
-- `reply_to_post` - Reply to a specific post
-- `quote_tweet` - Quote tweet with additional text
-
-### Post Interactions
-- `like_post` / `unlike_post` - Like/unlike posts
-- `retweet_post` / `unretweet_post` - Retweet/unretweet posts
-- `bookmark_post` / `unbookmark_post` - Bookmark management
-
-### Comment Interactions
-- `like_comment_by_id` / `unlike_comment_by_id` - Like/unlike comments
-- `reply_to_comment_by_id` - Reply to comments
-- `replace_comment_by_id` - Edit comments (if supported)
-
-### Content Scraping
-- `scrape_posts` - Scrape posts from current page
-- `scrape_profile` - Get user profile and recent posts
-- `scrape_comments` - Extract comments from posts
-- `scrape_timeline` - Scrape For You/Following timelines
-- `scrape_trending` - Get trending topics
-- `search_twitter` - General search functionality
-- `search_viral` - Search for viral content with minimum engagement
-
-## 📊 Data Structures
-
-### TwitterPost
-```typescript
-interface TwitterPost {
-  postId: string;
-  author: TwitterUser;
-  content: string;
-  timestamp: Date;
-  media: TwitterMedia[];
-  metrics: PostMetrics;
-  engagementRate: number;
-  isRetweet?: boolean;
-  retweetedFrom?: TwitterUser;
-  quotedPost?: TwitterPost;
-  url: string;
-}
-```
-
-### TwitterProfile
-```typescript
-interface TwitterProfile extends TwitterUser {
-  bannerUrl?: string;
-  bio?: string;
-  location?: string;
-  website?: string;
-  joinedDate?: Date;
-  followingCount: number;
-  followersCount: number;
-  postsCount: number;
-  isFollowing?: boolean;
-  isFollowedBy?: boolean;
-  latestPosts?: TwitterPost[];
-}
-```
-
-### PostMetrics
-```typescript
-interface PostMetrics {
-  likesCount: number;
-  retweetsCount: number;
-  quotesCount: number;
-  repliesCount: number;
-  impressionsCount: number;
-  bookmarksCount: number;
-}
-```
-
-## 🔒 Security & Best Practices
-
-### Rate Limiting
-- Implement delays between requests to avoid rate limiting
-- Use reasonable limits for scraping operations
-- Monitor for rate limit responses
-
-### Authentication
-- Store credentials securely in environment variables
-- Session data is stored in the directory specified by the `AUTH_DIR` environment variable (default `playwright/.auth/`)
-- Regular re-authentication may be required
-
-### Error Handling
-- All operations include comprehensive error handling
-- Descriptive error messages for troubleshooting
-- Graceful degradation for missing elements
-
-### Proxy Configuration
-- Supports HTTP/HTTPS proxies for all browser connections
-- Configure via `PROXY_URL` environment variable
-- Supports authentication with username/password
-- Useful for:
-  - Rotating IP addresses to avoid rate limits
-  - Accessing X/Twitter from restricted networks
-  - Adding an extra layer of anonymity
-- Example formats:
-  - Basic: `http://proxy-server:port`
-  - With auth: `http://username:password@proxy-server:port`
-  - Separate auth: Use `PROXY_USERNAME` and `PROXY_PASSWORD`
-
-## 🐳 Docker Deployment
-
-### Using Docker Compose
-```bash
-# Start the MCP server
-docker-compose --profile mcp up
-
-# With environment variables
-TWITTER_USERNAME=your_username TWITTER_PASSWORD=your_password docker-compose --profile mcp up
-```
-
-### Custom Docker Run
-```bash
-docker run -d \
-  --name x-mcp \
-  -e TWITTER_USERNAME=your_username \
-  -e TWITTER_PASSWORD=your_password \
-  -e PROXY_URL=http://proxy-server:port \
-  -e MCP_TRANSPORT=sse \
-  -e MCP_PORT=3000 \
-  -p 3000:3000 \
-  x-mcp
-```
-
-## 🛠️ Development
-
-### Project Structure
-```
-src/
-├── mcp.ts                    # Main MCP server implementation
-├── cli.ts                    # Command line interface
-├── types.ts                  # TypeScript type definitions
-├── utils.ts                  # Utility functions
-├── behaviors/                # User interaction behaviors
-│   ├── login.ts             # Authentication logic
-│   ├── interact-with-post.ts # Post interaction functions
-│   ├── interact-with-comment.ts # Comment interaction functions
-│   └── upload-media.ts      # Media upload functionality
-└── scrapers/                # Data scraping modules
-    ├── index.ts             # Scraper exports
-    ├── post-scraper.ts      # Post scraping logic
-    ├── profile-scraper.ts   # Profile scraping logic
-    ├── comment-scraper.ts   # Comment scraping logic
-    ├── search-scraper.ts    # Search functionality
-    ├── timeline-scraper.ts  # Timeline scraping
-    └── utils.ts             # Scraping utilities
-```
-
-### Building and Testing
-```bash
-# Build TypeScript
-npm run build
-
-# Run MCP server
+# HTTP 模式（默认，端口 18071）
 npm run mcp
 
-# Run CLI commands
-npm run cli <command>
+# 指定模式
+MCP_TRANSPORT=stdio npm run mcp
+MCP_TRANSPORT=sse npm run mcp
 ```
 
-## 🤝 Contributing
+## MCP 注册
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+```bash
+claude mcp add --transport http twitter-mcp http://localhost:18071/mcp
+```
 
-### Guidelines
-- Follow TypeScript best practices
-- Add comprehensive error handling
-- Update type definitions for new features
-- Test with real X/Twitter interactions
-- Document new functionality
+## 可用工具（20 个）
 
-## ⚠️ Disclaimers
+| 类别 | 工具 |
+|------|------|
+| 发布 | `tweet`, `thread`, `reply_to_post`, `quote_tweet` |
+| 互动 | `like_post`, `unlike_post`, `retweet_post`, `unretweet_post`, `bookmark_post`, `unbookmark_post` |
+| 评论 | `like_comment_by_id`, `unlike_comment_by_id`, `reply_to_comment_by_id` |
+| 爬取 | `scrape_posts`, `scrape_profile`, `scrape_comments`, `scrape_timeline`, `scrape_trending` |
+| 搜索 | `search_twitter`, `search_viral` |
 
-- This is an unofficial tool using browser automation
-- X/Twitter's terms of service apply
-- Use responsibly and respect rate limits
-- UI changes may require updates to selectors
-- Not affiliated with X/Twitter
+## 环境变量
 
-## 📄 License
+```env
+# 服务配置
+MCP_PORT=18071              # HTTP 端口
+MCP_TRANSPORT=http          # http|sse|stdio
 
-[License information here]
+# 自动登录（可选，Twitter 可能拦截）
+TWITTER_USERNAME=
+TWITTER_PASSWORD=
+TWITTER_EMAIL=
 
-## 🐛 Troubleshooting
+# 代理（可选）
+PROXY_URL=
+PROXY_USERNAME=
+PROXY_PASSWORD=
 
-### Common Issues
+# 调试
+SLOW_MO=0                   # 浏览器操作延迟(ms)
+NODE_ENV=production         # development 显示浏览器
+AUTH_DIR=playwright/.auth   # Cookie 存储目录
+```
 
-**Authentication Failures**
-- Verify credentials in `.env` file
-- Try logging in again with `npm run cli login`
-- Check for 2FA requirements
+## 端口
 
-**Element Not Found Errors**
-- X/Twitter may have updated their UI
-- Clear browser cache and re-authenticate
-- Check for element selector updates
+**18071**（固定，已在全局端口分配表中注册）
 
-**Rate Limiting**
-- Reduce request frequency
-- Add delays between operations
-- Use smaller batch sizes
+## License
 
-**Container Issues**
-- Ensure proper environment variables
-- Check port availability
-- Verify Docker network configuration
-
-For more help, please open an issue on the project repository.
+MIT

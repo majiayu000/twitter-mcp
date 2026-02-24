@@ -168,7 +168,7 @@ async function createBrowser() {
   const browser = await chromium.launch({
     timeout: 60000,
     headless: process.env.NODE_ENV !== "development",
-    slowMo: 1000,
+    slowMo: parseInt(process.env.SLOW_MO || "0"),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -202,6 +202,7 @@ export async function getUnauthenticatedPage() {
 export async function getAuthenticatedPage() {
   const browser = await createBrowser();
 
+  let hasAuthFile = false;
   let context;
   try {
     context = await browser.newContext({
@@ -209,8 +210,8 @@ export async function getAuthenticatedPage() {
       storageState: authFile,
       locale: "en-US",
     });
-  } catch (error) {
-    console.log("No auth file found, creating new context...");
+    hasAuthFile = true;
+  } catch {
     context = await browser.newContext({
       ...devices["Desktop Chrome"],
       locale: "en-US",
@@ -223,10 +224,9 @@ export async function getAuthenticatedPage() {
 
   const page = await context.newPage();
 
-  await page.goto("https://x.com/home");
-
-  if (page.url().includes("/i/flow/login") || page.url().includes("twitter.com/login")) {
-    console.log("Not logged in, performing automatic login...");
+  if (!hasAuthFile) {
+    // No saved session — must login
+    console.log("No auth file found, performing login...");
 
     const user = process.env.TWITTER_USERNAME;
     const password = process.env.TWITTER_PASSWORD;
@@ -235,9 +235,23 @@ export async function getAuthenticatedPage() {
     }
 
     await doLogin(page, user, password);
-
-    console.log("Saving new auth state...");
     await saveState(page);
+  } else {
+    // Verify saved session is still valid
+    await page.goto("https://x.com/home");
+
+    if (page.url().includes("/i/flow/login") || page.url().includes("twitter.com/login")) {
+      console.log("Saved session expired, re-logging in...");
+
+      const user = process.env.TWITTER_USERNAME;
+      const password = process.env.TWITTER_PASSWORD;
+      if (!user || !password) {
+        throw new Error("You need to set the TWITTER_USERNAME and TWITTER_PASSWORD env variables");
+      }
+
+      await doLogin(page, user, password);
+      await saveState(page);
+    }
   }
 
   return {

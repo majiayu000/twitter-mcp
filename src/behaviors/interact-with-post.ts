@@ -16,18 +16,18 @@ export async function likePost(page: Page, postUrl: string): Promise<boolean> {
     await page.goto(postUrl);
     await page.waitForLoadState("domcontentloaded");
 
-    // Find the like button
-    const likeButton = page.locator('[data-testid="like"]').first();
-    const isLiked = (await likeButton.getAttribute("data-testid")) === "unlike";
+    // Check if already liked by looking for the unlike button
+    const alreadyLiked = (await page.locator('[data-testid="unlike"]').count()) > 0;
 
-    if (!isLiked) {
-      await likeButton.click();
-      await page.waitForTimeout(r(500, 800));
-      return true;
+    if (alreadyLiked) {
+      console.log("Post already liked");
+      return false;
     }
 
-    console.log("Post already liked");
-    return false;
+    const likeButton = page.locator('[data-testid="like"]').first();
+    await likeButton.click();
+    await page.waitForTimeout(r(500, 800));
+    return true;
   } catch (error) {
     console.error("Error liking post:", error);
     throw error;
@@ -88,9 +88,13 @@ export async function unbookmarkPost(page: Page, postUrl: string): Promise<boole
     await page.goto(postUrl);
     await page.waitForLoadState("domcontentloaded");
 
-    // Find the bookmark button (when bookmarked, it has different styling but same testid)
-    const bookmarkButton = page.locator('[data-testid="bookmark"]').first();
-    await bookmarkButton.click();
+    // When bookmarked, the button has data-testid="removeBookmark"
+    const removeButton = page.locator('[data-testid="removeBookmark"]').first();
+    if ((await removeButton.count()) === 0) {
+      console.log("Post is not bookmarked");
+      return false;
+    }
+    await removeButton.click();
     await page.waitForTimeout(r(500, 800));
 
     return true;
@@ -221,10 +225,12 @@ export async function replyToPost(
 }
 
 export async function postTweet(page: Page, tweet: TweetWithMedia) {
-  await goHome(page);
-
-  console.log("Clicking tweet...");
-  await page.click("a[href='/compose/post']");
+  // Navigate directly to compose URL (more reliable than clicking sidebar button)
+  console.log("Opening compose...");
+  await page.goto("https://x.com/compose/post");
+  // compose/post opens a dialog — target textarea inside it to avoid strict-mode collision
+  const dialog = page.locator('[role="dialog"][aria-modal="true"]');
+  await dialog.locator('[data-testid="tweetTextarea_0"]').waitFor({ timeout: 15000 });
 
   if (tweet.media && tweet.media.length > 0) {
     console.log("Uploading media...");
@@ -232,13 +238,13 @@ export async function postTweet(page: Page, tweet: TweetWithMedia) {
   }
 
   console.log("Typing tweet...");
-  await page.fill(
-    "//div[@data-viewportview='true']//div[@class='DraftEditor-editorContainer']/div[@role='textbox']",
-    tweet.text
-  );
+  const textArea = dialog.locator('[data-testid="tweetTextarea_0"]');
+  await textArea.click();
+  await textArea.fill(tweet.text);
+  await page.waitForTimeout(r(300, 500));
 
   console.log("Clicking post...");
-  await page.click("//span[contains(text(), 'Post')]");
+  await dialog.locator('[data-testid="tweetButton"]').click();
 
   const isDuplicate = await page
     .waitForSelector("text=Whoops! You already said that.", { timeout: 2000 })

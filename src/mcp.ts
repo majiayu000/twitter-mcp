@@ -2,6 +2,8 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "crypto";
 import express from "express";
 import {
   CallToolRequestSchema,
@@ -44,7 +46,6 @@ import {
 // Import comment interaction functions
 import {
   likeCommentById,
-  replaceCommentById,
   replyToCommentById,
   unlikeCommentById,
 } from "./behaviors/interact-with-comment";
@@ -188,11 +189,6 @@ const UnlikeCommentByIdSchema = z.object({
 const ReplyToCommentByIdSchema = z.object({
   commentUrl: z.string().url().describe("Direct URL to the comment"),
   replyText: z.string().min(1).max(280).describe("Text for the reply"),
-});
-
-const ReplaceCommentByIdSchema = z.object({
-  commentUrl: z.string().url().describe("Direct URL to the comment"),
-  newText: z.string().min(1).max(280).describe("The new text to replace the comment with"),
 });
 
 export class TwitterMCPServer {
@@ -617,27 +613,6 @@ export class TwitterMCPServer {
             required: ["commentUrl", "replyText"],
           },
         } as Tool,
-        {
-          name: "replace_comment_by_id",
-          description:
-            "Replace/edit a comment by its direct URL (Note: Twitter/X may not support comment editing)",
-          inputSchema: {
-            type: "object",
-            properties: {
-              commentUrl: {
-                type: "string",
-                description: "Direct URL to the comment",
-              },
-              newText: {
-                type: "string",
-                description: "The new text to replace the comment with",
-                minLength: 1,
-                maxLength: 280,
-              },
-            },
-            required: ["commentUrl", "newText"],
-          },
-        } as Tool,
       ],
     }));
 
@@ -690,8 +665,6 @@ export class TwitterMCPServer {
             return await this.handleUnlikeCommentById(args);
           case "reply_to_comment_by_id":
             return await this.handleReplyToCommentById(args);
-          case "replace_comment_by_id":
-            return await this.handleReplaceCommentById(args);
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }
@@ -1012,7 +985,7 @@ export class TwitterMCPServer {
     if (this.authenticatedPage && process.env.DEBUG_WEBHOOK_URL) {
       try {
         const filePath = "debug_screenshot.png";
-        this.authenticatedPage?.screenshot({ path: filePath });
+        await this.authenticatedPage?.screenshot({ path: filePath });
         const fileBuffer = readFileSync(filePath);
         await fetch(process.env.DEBUG_WEBHOOK_URL, {
           method: "POST",
@@ -1257,53 +1230,29 @@ export class TwitterMCPServer {
     };
   }
 
-  private async handleReplaceCommentById(args: unknown) {
-    const result = ReplaceCommentByIdSchema.safeParse(args);
-    if (!result.success) {
-      throw new McpError(ErrorCode.InvalidParams, `Invalid parameters: ${result.error.message}`);
-    }
-
-    const page = await this.ensureAuthenticated();
-    await replaceCommentById(page, result.data.commentUrl, result.data.newText);
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Successfully replaced comment: ${result.data.commentUrl} with: "${result.data.newText}"`,
-        },
-      ] as TextContent[],
-    };
-  }
-
-  async start(): Promise<void> {
+  async startStdio(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error("Twitter Playwright MCP server running on stdio");
+    console.error("Twitter MCP server running on stdio");
   }
 
-  async startSSE(port: number = 3000): Promise<void> {
+  async startSSE(port: number): Promise<void> {
     const app = express();
     app.use(express.json());
 
-    // Store transports for multiple connections
     const transports: { [sessionId: string]: SSEServerTransport } = {};
 
-    // SSE connection endpoint
     app.get("/sse", async (_req, res) => {
       const transport = new SSEServerTransport("/messages", res);
       transports[transport.sessionId] = transport;
 
       res.on("close", () => {
-        console.error(`SSE connection closed: ${transport.sessionId}`);
         delete transports[transport.sessionId];
       });
 
       await this.server.connect(transport);
-      console.error(`SSE connection established: ${transport.sessionId}`);
     });
 
-    // Message handling endpoint
     app.post("/messages", async (req, res) => {
       const sessionId = req.query.sessionId as string;
       const transport = transports[sessionId];
@@ -1315,33 +1264,89 @@ export class TwitterMCPServer {
       }
     });
 
-    app.get("/ping", (_req, res) => {
-      res.send("pong");
+    app.get("/health", (_req, res) => {
+      res.json({ status: "ok" });
     });
 
     app.listen(port, () => {
-      console.error(`Twitter Playwright MCP server running on HTTP port ${port}`);
-      console.error(`SSE endpoint: http://localhost:${port}/sse`);
-      console.error(`Messages endpoint: http://localhost:${port}/messages`);
+      console.error(`Twitter MCP server (SSE) listening on http://localhost:${port}`);
+    });
+  }
+
+  async startHTTP(port: number): Promise<void> {
+    const app = express();
+    app.use(express.json());
+
+    const transports = new Map<string, StreamableHTTPServerTransport>();
+
+    app.all("/mcp", async (req, res) => {
+      const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+      // Existing session
+      if (sessionId && transports.has(sessionId)) {
+        const transport = transports.get(sessionId)!;
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
+
+      // New session (initialization request)
+      if (!sessionId && req.method === "POST") {
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (id) => {
+            transports.set(id, transport);
+          },
+        });
+
+        transport.onclose = () => {
+          if (transport.sessionId) {
+            transports.delete(transport.sessionId);
+          }
+        };
+
+        await this.server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
+
+      res.status(400).json({ error: "Invalid request" });
+    });
+
+    app.delete("/mcp", async (req, res) => {
+      const sessionId = req.headers["mcp-session-id"] as string | undefined;
+      if (sessionId && transports.has(sessionId)) {
+        const transport = transports.get(sessionId)!;
+        await transport.handleRequest(req, res);
+        transports.delete(sessionId);
+        return;
+      }
+      res.status(404).json({ error: "Session not found" });
+    });
+
+    app.get("/health", (_req, res) => {
+      res.json({ status: "ok" });
+    });
+
+    app.listen(port, () => {
+      console.error(`Twitter MCP server (HTTP) listening on http://localhost:${port}/mcp`);
     });
   }
 }
 
 if (require.main === module) {
   const server = new TwitterMCPServer();
+  const transport = process.env.MCP_TRANSPORT || "http";
+  const port = parseInt(process.env.MCP_PORT || "18071");
 
-  const useSSE = process.env.MCP_TRANSPORT === "sse" || process.env.MCP_TRANSPORT === "http";
-  const port = parseInt(process.env.MCP_PORT || "3000");
+  const startFn =
+    transport === "sse"
+      ? () => server.startSSE(port)
+      : transport === "stdio"
+        ? () => server.startStdio()
+        : () => server.startHTTP(port);
 
-  if (useSSE) {
-    server.startSSE(port).catch((error) => {
-      console.error("Failed to start SSE server:", error);
-      process.exit(1);
-    });
-  } else {
-    server.start().catch((error) => {
-      console.error("Failed to start server:", error);
-      process.exit(1);
-    });
-  }
+  startFn().catch((error) => {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  });
 }

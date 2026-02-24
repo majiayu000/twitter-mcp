@@ -83,64 +83,6 @@ export async function unlikeCommentById(page: Page, commentUrl: string): Promise
 }
 
 /**
- * Replace/edit a comment by its ID (Note: Twitter/X typically doesn't allow editing comments)
- * @param page - The authenticated page
- * @param commentUrl - Direct URL to the comment
- * @param newText - The new text to replace the comment with
- */
-export async function replaceCommentById(page: Page, commentUrl: string, newText: string): Promise<boolean> {
-  try {
-    await page.goto(commentUrl);
-    await page.waitForLoadState('domcontentloaded');
-    
-    // Find the focal comment
-    const focalComment = await findFocalComment(page);
-    
-    // Look for edit button or menu options within the focal comment
-    // Note: Twitter/X may not support comment editing, so this might not work
-    const moreButton = focalComment.locator('[data-testid="caret"]').first();
-    if (await moreButton.isVisible()) {
-      await moreButton.click();
-      await page.waitForTimeout(r(300, 500));
-      
-      // Look for edit option in the dropdown
-      const editButton = page.locator('text=Edit').or(page.locator('[data-testid="edit"]'));
-      if (await editButton.isVisible()) {
-        await editButton.click();
-        await page.waitForTimeout(r(500, 800));
-        
-        // Find the text area and replace content
-        const textArea = page.locator('[data-testid="tweetTextarea_0"]').or(
-          page.locator('div[contenteditable="true"]')
-        );
-        
-        if (await textArea.isVisible()) {
-          // Clear existing text and enter new text
-          await textArea.selectText();
-          await textArea.fill(newText);
-          await page.waitForTimeout(r(300, 500));
-          
-          // Save the changes
-          const saveButton = page.locator('[data-testid="tweetButton"]').or(
-            page.locator('text=Save')
-          );
-          await saveButton.click();
-          await page.waitForTimeout(r(1000, 1500));
-          
-          return true;
-        }
-      }
-    }
-    
-    throw new Error("Edit functionality not available or not found");
-    
-  } catch (error) {
-    console.error("Error replacing comment by ID:", error);
-    throw error;
-  }
-}
-
-/**
  * Reply to a comment by its ID (if you have scraped comments and have their IDs)
  * @param page - The authenticated page
  * @param commentUrl - Direct URL to the comment

@@ -67,9 +67,14 @@ export async function uploadMedia(page: Page, mediaPaths: string[]) {
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles(absolutePaths);
     
-    // Wait for upload to complete
-    await page.waitForTimeout(2000);
-    
+    // Wait for upload to complete by checking for media attachments
+    try {
+      await page.waitForSelector('[data-testid="attachments"] img, [data-testid="attachments"] video', { timeout: 15000 });
+    } catch {
+      // Fallback: wait a fixed duration if selector not found
+      await page.waitForTimeout(3000);
+    }
+
     console.log("Media uploaded successfully");
     
   } finally {
