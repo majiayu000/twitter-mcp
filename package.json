@@ -6,6 +6,7 @@
   "main": "dist/mcp.js",
   "scripts": {
     "build": "tsc",
+    "test": "npx tsc --noEmit",
     "mcp": "ts-node -T ./src/mcp.ts",
     "login": "ts-node -T ./src/manual-login.ts",
     "extract-cookies": "ts-node -T ./src/extract-cookies.ts",
