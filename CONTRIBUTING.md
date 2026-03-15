@@ -5,7 +5,7 @@ We welcome contributions to the X/Twitter MCP Server! This document provides gui
 ## Development Setup
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 20.12 LTS or 22+
 - npm or yarn
 - Git
 
