@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build
 
 # Use the official Playwright image for runtime (includes browsers)
-FROM mcr.microsoft.com/playwright:v1.44.0-focal AS runner
+FROM mcr.microsoft.com/playwright:v1.58.2-noble AS runner
 
 # Set the working directory in the runtime image
 WORKDIR /app
