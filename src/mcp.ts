@@ -219,7 +219,7 @@ export class TwitterMCPServer {
     };
 
     // Graceful shutdown
-    process.on("SIGINT", async () => {
+    process.once("SIGINT", async () => {
       console.error("Shutting down server...");
       if (this.browserContextClose) {
         await this.browserContextClose();
@@ -996,7 +996,9 @@ export class TwitterMCPServer {
           body: fileBuffer,
         });
         unlinkSync(filePath);
-      } catch {}
+      } catch (e) {
+        console.error("截图上传失败:", e);
+      }
     }
 
     if (error instanceof McpError) {
