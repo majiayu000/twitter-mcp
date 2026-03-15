@@ -5,6 +5,7 @@
   "description": "Twitter/X MCP server via Playwright browser automation",
   "main": "dist/mcp.js",
   "scripts": {
+    "test": "tsc --noEmit",
     "build": "tsc",
     "mcp": "ts-node -T ./src/mcp.ts",
     "login": "ts-node -T ./src/manual-login.ts",
