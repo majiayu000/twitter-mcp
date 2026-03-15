@@ -10,7 +10,8 @@
     "login": "ts-node -T ./src/manual-login.ts",
     "extract-cookies": "ts-node -T ./src/extract-cookies.ts",
     "cli": "ts-node -T ./src/cli.ts",
-    "dev-cli": "cross-env NODE_ENV=development ts-node -T ./src/cli.ts"
+    "dev-cli": "cross-env NODE_ENV=development ts-node -T ./src/cli.ts",
+    "test": "tsc --noEmit"
   },
   "engines": {
     "node": ">=18.0.0"
