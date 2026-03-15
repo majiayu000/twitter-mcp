@@ -154,7 +154,7 @@ function getProxyConfig() {
     }
   }
 
-  console.log("Using proxy config:", proxyConfig);
+  console.log("Using proxy config:", { ...proxyConfig, password: proxyConfig.password ? "***" : undefined });
   return {
     server: proxyConfig.server,
     ...(proxyConfig.username && { username: proxyConfig.username }),
