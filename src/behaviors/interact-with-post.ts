@@ -1,4 +1,4 @@
-import { Page } from "playwright-core";
+import { Page } from "playwright";
 import { r } from "../utils";
 import { TweetWithMedia } from "../types";
 import { goHome } from "./go-home";

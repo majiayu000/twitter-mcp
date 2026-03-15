@@ -46,7 +46,7 @@ async function main() {
   console.log("请在弹出的浏览器中登录你想要使用的 Twitter 账号\n");
 
   // open -n -a 强制启动新 Chrome 实例，不影响已运行的 Chrome
-  const chrome = spawn("open", [
+  spawn("open", [
     "-n",
     "-a",
     "Google Chrome",
