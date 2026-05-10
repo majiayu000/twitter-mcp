@@ -10,14 +10,58 @@ import { chromium } from "playwright";
 import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
+import os from "os";
 
 const authDir = process.env.AUTH_DIR || "playwright/.auth";
 const authFile = path.join(authDir, "twitter.json");
 const CDP_PORT = 9333; // 避免和其他调试端口冲突
-const TEMP_PROFILE = path.join(
-  process.env.TMPDIR || "/tmp",
-  "twitter-mcp-chrome-profile"
-);
+
+function getTempProfileDir(): string {
+  const tmpDir = process.env.TMPDIR || process.env.TEMP || os.tmpdir();
+  return path.join(tmpDir, "twitter-mcp-chrome-profile");
+}
+
+const TEMP_PROFILE = getTempProfileDir();
+
+function getChromePath(): string | null {
+  const platform = process.platform;
+
+  if (platform === "darwin") {
+    const p = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+    if (fs.existsSync(p)) return p;
+  }
+
+  if (platform === "win32") {
+    const candidates = [
+      path.join(
+        process.env.LOCALAPPDATA || "",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe"
+      ),
+      path.join(
+        process.env.PROGRAMFILES || "",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe"
+      ),
+      path.join(
+        process.env["PROGRAMFILES(X86)"] || "",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe"
+      ),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return p;
+    }
+  }
+
+  return null;
+}
 
 async function waitForCDP(port: number, timeoutMs = 30000): Promise<boolean> {
   const start = Date.now();
@@ -35,17 +79,20 @@ async function main() {
   fs.mkdirSync(authDir, { recursive: true });
 
   // 查找 Chrome 二进制
-  const chromePath =
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  if (!fs.existsSync(chromePath)) {
+  const chromePath = getChromePath();
+  if (!chromePath) {
     console.error("未找到 Google Chrome，请先安装");
     process.exit(1);
   }
+  console.log(`找到 Chrome: ${chromePath}`);
 
   console.log("启动独立 Chrome 窗口（临时 profile）...");
   console.log("请在弹出的浏览器中登录你想要使用的 Twitter 账号\n");
 
-  // open -n -a 强制启动新 Chrome 实例，不影响已运行的 Chrome
+  const platform = process.platform;
+
+  if (platform === "darwin") {
+    // macOS: open -n -a 强制启动新 Chrome 实例，不影响已运行的 Chrome
   spawn("open", [
     "-n",
     "-a",
@@ -57,6 +104,16 @@ async function main() {
     "--no-default-browser-check",
     "https://x.com/login",
   ]);
+  } else if (platform === "win32") {
+    // Windows: 启动 chrome.exe
+    spawn(chromePath, [
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${TEMP_PROFILE}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "https://x.com/login",
+    ], { detached: true, windowsHide: false });
+  }
 
   // 等待 Chrome CDP 就绪
   const ready = await waitForCDP(CDP_PORT);
@@ -135,7 +192,13 @@ async function main() {
   await browser.close();
 
   // 清理临时 profile
+  try {
   fs.rmSync(TEMP_PROFILE, { recursive: true, force: true });
+  } catch (err: any) {
+    if (err.code !== "EPERM") {
+      console.error("清理临时目录失败:", err.message);
+    }
+  }
 
   process.exit(0);
 }
