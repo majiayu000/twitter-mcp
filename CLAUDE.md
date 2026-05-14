@@ -28,3 +28,7 @@ claude mcp add --transport http twitter-mcp http://localhost:18071/mcp
 - `MCP_TRANSPORT=http`（默认）— StreamableHTTP，端点 `/mcp`
 - `MCP_TRANSPORT=sse` — SSE 模式
 - `MCP_TRANSPORT=stdio` — 标准输入输出
+
+## VibeGuard 豁免
+
+U-16 exempt: `src/mcp.ts` → 1500 — MCP server 主文件聚合 21 个 tool 定义与 handler，正在分步拆分中

@@ -49,7 +49,6 @@ import {
   replyToCommentById,
   unlikeCommentById,
 } from "./behaviors/interact-with-comment";
-import { readFileSync, unlinkSync } from "fs";
 
 // Validation schemas using Zod
 const TweetSchema = z.object({
@@ -218,15 +217,17 @@ export class TwitterMCPServer {
       console.error("[MCP Error]:", error);
     };
 
-    // Graceful shutdown
-    process.once("SIGINT", async () => {
-      console.error("Shutting down server...");
+    // Graceful shutdown — SIGINT (ctrl-c) and SIGTERM (docker/k8s/railway stop)
+    const shutdown = async (signal: string) => {
+      console.error(`Received ${signal}, shutting down server...`);
       if (this.browserContextClose) {
         await this.browserContextClose();
       }
       await this.server.close();
       process.exit(0);
-    });
+    };
+    process.once("SIGINT", () => shutdown("SIGINT"));
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
 
     // Register tool handlers
     this.setupToolHandlers();
@@ -929,9 +930,13 @@ export class TwitterMCPServer {
     }
 
     const page = await this.ensureAuthenticated();
-    const posts = await scrapeTimeline(page, result.data.type as any, {
+    const posts = await scrapeTimeline(page, result.data.type, {
       maxPosts: result.data.maxPosts,
     });
+
+    const avgEngagement = posts.length > 0
+      ? posts.reduce((sum, post) => sum + post.engagementRate, 0) / posts.length
+      : 0;
 
     return {
       content: [
@@ -941,10 +946,7 @@ export class TwitterMCPServer {
             {
               timeline: result.data.type,
               count: posts.length,
-              avgEngagement:
-                (posts.reduce((sum, post) => sum + post.engagementRate, 0) / posts.length).toFixed(
-                  2
-                ) + "%",
+              avgEngagement: avgEngagement.toFixed(2) + "%",
               posts: posts.map((post) => ({
                 author: post.author.username,
                 content: post.content.substring(0, 100) + "...",
@@ -984,18 +986,16 @@ export class TwitterMCPServer {
   private async handleError(error: unknown) {
     if (this.authenticatedPage && process.env.DEBUG_WEBHOOK_URL) {
       try {
-        const filePath = "debug_screenshot.png";
-        await this.authenticatedPage?.screenshot({ path: filePath });
-        const fileBuffer = readFileSync(filePath);
+        const fileBuffer = await this.authenticatedPage.screenshot();
+        const fileName = `debug_screenshot_${Date.now()}_${randomUUID()}.png`;
         await fetch(process.env.DEBUG_WEBHOOK_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/octet-stream",
-            "Content-Disposition": `attachment; filename=\"${filePath}\"`,
+            "Content-Disposition": `attachment; filename="${fileName}"`,
           },
           body: fileBuffer,
         });
-        unlinkSync(filePath);
       } catch (e) { console.error("截图上传失败:", e); }
     }
 

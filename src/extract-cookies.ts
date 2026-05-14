@@ -126,7 +126,7 @@ async function main() {
   console.log(`  ct0: ${ct0 ? "*".repeat(10) + "..." : "未找到"}`);
 
   // 保存
-  const storageState = { cookies, origins: [] as any[] };
+  const storageState: Awaited<ReturnType<typeof context.storageState>> = { cookies, origins: [] };
   fs.writeFileSync(authFile, JSON.stringify(storageState, null, 2));
   console.log(`\nCookie 已保存到: ${authFile}`);
   console.log("twitter-mcp 服务将自动使用此登录状态");

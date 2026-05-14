@@ -4,7 +4,7 @@ import { Page } from 'playwright';
 import { likeCommentById, replyToCommentById, unlikeCommentById } from './behaviors/interact-with-comment';
 import { bookmarkPost, likePost, postThread, postTweet, quoteTweet, replyToPost, retweetPost, unbookmarkPost, unlikePost, unretweetPost } from './behaviors/interact-with-post';
 import { getAuthenticatedPage, login } from './behaviors/login';
-import { SearchPresets, getTopComments, scrapeComments, scrapePosts, scrapeProfile, scrapeTimeline, scrapeTrendingTopics, searchTwitter } from './scrapers';
+import { SearchPresets, getTopComments, scrapeComments, scrapePosts, scrapeProfile, scrapeTimeline, scrapeTrendingTopics, searchTwitter, TimelineType } from './scrapers';
 import { TweetWithMedia } from './types';
 
 const program = new Command();
@@ -234,10 +234,17 @@ program
   .option('-m, --max <number>', 'Maximum posts to scrape', '10')
   .action(async (options: { type: string; max: string }) => {
     try {
+      if (options.type !== 'for-you' && options.type !== 'following') {
+        console.error(`❌ Invalid timeline type: ${options.type} (must be 'for-you' or 'following')`);
+        process.exit(1);
+      }
+      const timelineType: TimelineType = options.type;
       const page = await ensureAuthenticated();
-      const posts = await scrapeTimeline(page, options.type as any, { maxPosts: parseInt(options.max) });
-      const avgEngagement = posts.reduce((sum, post) => sum + post.engagementRate, 0) / posts.length;
-      console.log(`✅ Scraped ${posts.length} posts from ${options.type} timeline:`);
+      const posts = await scrapeTimeline(page, timelineType, { maxPosts: parseInt(options.max) });
+      const avgEngagement = posts.length > 0
+        ? posts.reduce((sum, post) => sum + post.engagementRate, 0) / posts.length
+        : 0;
+      console.log(`✅ Scraped ${posts.length} posts from ${timelineType} timeline:`);
       console.log(`   Average engagement: ${avgEngagement.toFixed(2)}%`);
       posts.forEach((post, i) => {
         console.log(`\n${i + 1}. @${post.author.username}`);

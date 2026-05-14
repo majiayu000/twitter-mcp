@@ -2,23 +2,21 @@ import { Page } from "playwright";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { createWriteStream } from "fs";
-import { pipeline } from "stream/promises";
 
 async function downloadImage(url: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download image: ${response.statusText}`);
   }
-  
+
   // Create temp file with appropriate extension
   const ext = path.extname(new URL(url).pathname) || '.jpg';
   const tempFile = path.join(os.tmpdir(), `upload-${Date.now()}${ext}`);
-  
-  // Download to temp file
-  const fileStream = createWriteStream(tempFile);
-  await pipeline(response.body as any, fileStream);
-  
+
+  // Buffer once and write — image sizes are small enough that streaming buys nothing
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await fs.promises.writeFile(tempFile, buffer);
+
   return tempFile;
 }
 
